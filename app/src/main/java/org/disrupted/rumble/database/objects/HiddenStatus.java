@@ -6,9 +6,16 @@ package org.disrupted.rumble.database.objects;
 public class HiddenStatus {
     private static final String TAG = "StatusMessage";
 
+    public static final int STATUS_MAX_SIZE = 5000000; // limit 5Mb file. This is arbitrary..
+
     protected long dbid;
     protected String gid;
     protected byte[] status_bytes;
+
+
+    public HiddenStatus(String gid, byte[] status_bytes) {
+        this(-1, gid, status_bytes);
+    }
 
     public HiddenStatus(long db_id, String gid, byte[] status_bytes) {
         this.dbid = db_id;
