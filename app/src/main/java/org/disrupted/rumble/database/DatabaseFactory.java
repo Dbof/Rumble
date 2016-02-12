@@ -24,6 +24,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteDatabase.CursorFactory;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.disrupted.rumble.database.objects.HiddenStatus;
 import org.disrupted.rumble.database.statistics.StatChannelDatabase;
 import org.disrupted.rumble.database.statistics.StatInterfaceDatabase;
 import org.disrupted.rumble.database.statistics.StatLinkLayerDatabase;
@@ -37,7 +38,7 @@ public class DatabaseFactory {
 
     private static final String TAG = "DatabaseFactory";
 
-    private static final int DATABASE_VERSION  = 1;
+    private static final int DATABASE_VERSION  = 2;
     private static final String MAIN_DB_NAME   = "rumble.db";
 
     private static final int STATISTIC_VERSION  = 1;
@@ -51,6 +52,7 @@ public class DatabaseFactory {
     private StatisticHelper                      statisticHelper;
 
     private final PushStatusDatabase             pushStatusDatabase;
+    private final HiddenStatusDatabase           hiddenStatusDatabase;
     private final ChatMessageDatabase            chatMessageDatabase;
     private final HashtagDatabase                hashtagDatabase;
     private final StatusTagDatabase              statusTagDatabase;
@@ -84,6 +86,10 @@ public class DatabaseFactory {
 
     public static PushStatusDatabase getPushStatusDatabase(Context context) {
             return getInstance(context).pushStatusDatabase;
+    }
+
+    public static HiddenStatusDatabase getHiddenStatusDatabase(Context context) {
+        return getInstance(context).hiddenStatusDatabase;
     }
     public static ChatMessageDatabase getChatMessageDatabase(Context context) {
         return getInstance(context).chatMessageDatabase;
@@ -142,6 +148,7 @@ public class DatabaseFactory {
         this.databaseHelper                 = new DatabaseHelper(context, MAIN_DB_NAME, null, DATABASE_VERSION);
         this.interfaceDatabase              = new InterfaceDatabase(context, databaseHelper);
         this.pushStatusDatabase             = new PushStatusDatabase(context, databaseHelper);
+        this.hiddenStatusDatabase           = new HiddenStatusDatabase(context, databaseHelper);
         this.chatMessageDatabase            = new ChatMessageDatabase(context, databaseHelper);
         this.hashtagDatabase                = new HashtagDatabase(context, databaseHelper);
         this.statusTagDatabase              = new StatusTagDatabase(context, databaseHelper);
@@ -168,6 +175,7 @@ public class DatabaseFactory {
 
         this.contactDatabase.reset(databaseHelper);
         this.pushStatusDatabase.reset(databaseHelper);
+        this.hiddenStatusDatabase.reset(databaseHelper);
         this.chatMessageDatabase.reset(databaseHelper);
         this.hashtagDatabase.reset(databaseHelper);
         this.statusTagDatabase.reset(databaseHelper);
@@ -205,6 +213,7 @@ public class DatabaseFactory {
             db.execSQL(ContactDatabase.CREATE_TABLE);
             db.execSQL(GroupDatabase.CREATE_TABLE);
             db.execSQL(PushStatusDatabase.CREATE_TABLE);
+            db.execSQL(HiddenStatusDatabase.CREATE_TABLE);
             db.execSQL(HashtagDatabase.CREATE_TABLE);
             db.execSQL(StatusTagDatabase.CREATE_TABLE);
             db.execSQL(ChatMessageDatabase.CREATE_TABLE);

@@ -1,5 +1,13 @@
 package org.disrupted.rumble.database.objects;
 
+import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockHeader;
+import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockHiddenStatus;
+import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockPushStatus;
+import org.disrupted.rumble.util.Log;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+
 /**
  * Created by davide on 12/02/16.
  */
@@ -11,6 +19,7 @@ public class HiddenStatus {
     protected long dbid;
     protected String gid;
     protected byte[] status_bytes;
+    private BlockHeader header;
 
 
     public HiddenStatus(String gid, byte[] status_bytes) {
@@ -32,6 +41,10 @@ public class HiddenStatus {
 
     public byte[] getStatus() {
         return status_bytes;
+    }
+
+    public void setDbid(long dbid) {
+        this.dbid = dbid;
     }
 
     @Override
@@ -59,5 +72,31 @@ public class HiddenStatus {
         b.append("Group ID: ").append(this.gid).append("\n");
         b.append("Blob size: ").append(this.status_bytes.length).append(" bytes)");
         return b.toString();
+    }
+
+    public PushStatus convertToPushStatus(Group group) {
+        if (group == null)
+            return null;
+
+        BlockPushStatus bps = new BlockPushStatus(header);
+        ByteArrayInputStream is = new ByteArrayInputStream(status_bytes);
+        // TODO: this does not support encrypted statuses, where IV and key is required
+        PushStatus res = null;
+        try {
+            bps.readBlock(is);
+            res = bps.status;
+            Log.d(TAG, "HiddenStatus was converted successfully!");
+        } catch (Exception e) {
+            Log.e(TAG, "convertToPushStatus failed: " + e.getMessage());
+        } finally {
+            try {
+                is.close();
+            } catch (IOException ignore) {}
+        }
+        return res;
+    }
+
+    public void setHeader(BlockHeader header) {
+        this.header = header;
     }
 }

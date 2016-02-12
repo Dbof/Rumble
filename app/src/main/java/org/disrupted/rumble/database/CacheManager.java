@@ -24,6 +24,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 
+import org.disrupted.rumble.database.objects.HiddenStatus;
+import org.disrupted.rumble.network.protocols.events.HiddenStatusReceived;
 import org.disrupted.rumble.userinterface.events.UserLeaveGroup;
 import org.disrupted.rumble.util.Log;
 
@@ -68,12 +70,13 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Map;
 
 import de.greenrobot.event.EventBus;
 
 /**
- * The CacheManager takes care ongf updati the database accordingly to the catched event
+ * The CacheManager takes care of updating the database accordingly to the catched event
  *
  * @author Lucien Loiseau
  */
@@ -99,7 +102,7 @@ public class CacheManager {
     }
 
     public void start() {
-        if(!started) {
+        if (!started) {
             Log.d(TAG, "[+] Starting Cache Manager");
             started = true;
             EventBus.getDefault().register(this);
@@ -107,14 +110,38 @@ public class CacheManager {
     }
 
     public void stop() {
-        if(started) {
+        if (started) {
             Log.d(TAG, "[-] Stopping Cache Manager");
             started = false;
-            if(EventBus.getDefault().isRegistered(this))
+            if (EventBus.getDefault().isRegistered(this))
                 EventBus.getDefault().unregister(this);
         }
     }
 
+
+    public void onEventAsync(HiddenStatusReceived event) {
+        if (event.status == null)
+            return;
+        if ((event.status.getGid() == null) || (event.status.getStatus() == null))
+            return;
+
+        // create a group and add it to the database
+        Group hiddenGroup = new Group(event.status.getGid(), event.status.getGid(), null);
+        if (!DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(hiddenGroup)) {
+            // Group existed before, so try to decode status
+            hiddenGroup = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext())
+                    .getGroup(event.status.getGid());
+            PushStatus ps = event.status.convertToPushStatus(hiddenGroup);
+            if (ps != null) {
+                ;//TODO: send event PushStatusReceived
+            } else return;
+        } else {
+            // Group was created, so add hidden status to database
+            DatabaseFactory.getHiddenStatusDatabase(RumbleApplication.getContext()).insertStatus(event.status);
+            Log.d(TAG, "Inserted hidden status into database (dbid " + event.status.getDbid() + ")");
+        }
+
+    }
 
     /*
      * Managing Network Interaction, onEventAsync to avoid slowing down network
@@ -127,7 +154,7 @@ public class CacheManager {
                 return;
 
             Group group = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroup(event.gid);
-            if(group == null) {
+            if (group == null) {
                 // we do not belong to the group
                 Log.d(TAG, "[!] unknow group: refusing the message");
                 return;
@@ -201,7 +228,7 @@ public class CacheManager {
             if (saveImageOnDisk(event.tempfile, exists.getFileName()))
                 EventBus.getDefault().post(new FileInsertedEvent(attached.getName(), exists.getUuid()));
 
-        } catch (Exception ignore ) {
+        } catch (Exception ignore) {
             ignore.getMessage();
         } finally {
             if (!event.tempfile.equals("")) {
@@ -211,29 +238,30 @@ public class CacheManager {
                 } catch (IOException ignore) {
                 }
             }
-            if(event.status != null)
+            if (event.status != null)
                 event.status.discard();
         }
     }
+
     public void onEventAsync(ContactInformationReceived event) {
         Contact contact = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContact(event.contact.getUid());
-        if(contact == null) {
+        if (contact == null) {
             contact = new Contact(event.contact);
             // first time we meet this fellow, we add it to the database
             DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).insertOrUpdateContact(contact);
         } else {
             // we update the contact information only under certain conditions
-            if((contact.isFriend()) && (!event.authenticated)) {
+            if ((contact.isFriend()) && (!event.authenticated)) {
                 // we do not accept unauthenticated update from friends
                 Log.d(TAG, "[!] receive contact update for a friend but content was not authenticated");
                 return;
             }
-            if(!contact.getName().equals(event.contact.getName())) {
+            if (!contact.getName().equals(event.contact.getName())) {
                 // we do not accept conflicting name/uid, it means the packet was forged
-                Log.d(TAG, "[!] AuthorID: "+contact.getUid()+ " CONFLICT: db="+contact.getName()+" status="+event.contact.getName());
+                Log.d(TAG, "[!] AuthorID: " + contact.getUid() + " CONFLICT: db=" + contact.getName() + " status=" + event.contact.getName());
                 return;
             }
-            if(contact.isLocal()) {
+            if (contact.isLocal()) {
                 // of course, we do not accept receiving update for our own self
                 Log.d(TAG, "[!] receive contact information for ourself");
                 return;
@@ -251,9 +279,9 @@ public class CacheManager {
             contact.setJoinedGroupIDs(event.contact.getJoinedGroupIDs());
             DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext())
                     .deleteEntriesMatchingContactID(contactDBID);
-            for(String group : contact.getJoinedGroupIDs()) {
-                long groupDBID   = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(group);
-                if(groupDBID > 0)
+            for (String group : contact.getJoinedGroupIDs()) {
+                long groupDBID = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(group);
+                if (groupDBID > 0)
                     DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext()).insertContactGroup(contactDBID, groupDBID);
             }
             EventBus.getDefault().post(new ContactGroupListUpdated(contact));
@@ -262,9 +290,9 @@ public class CacheManager {
             contact.setHashtagInterests(event.contact.getHashtagInterests());
             DatabaseFactory.getContactHashTagInterestDatabase(RumbleApplication.getContext())
                     .deleteEntriesMatchingContactID(contactDBID);
-            for(Map.Entry<String, Integer> entry : contact.getHashtagInterests().entrySet()) {
-                long hashtagDBID  = DatabaseFactory.getHashtagDatabase(RumbleApplication.getContext()).getHashtagDBID(entry.getKey());
-                if(hashtagDBID > 0)
+            for (Map.Entry<String, Integer> entry : contact.getHashtagInterests().entrySet()) {
+                long hashtagDBID = DatabaseFactory.getHashtagDatabase(RumbleApplication.getContext()).getHashtagDBID(entry.getKey());
+                if (hashtagDBID > 0)
                     DatabaseFactory.getContactHashTagInterestDatabase(RumbleApplication.getContext()).insertContactTagInterest(contactDBID, hashtagDBID, entry.getValue());
             }
             EventBus.getDefault().post(new ContactTagInterestUpdatedEvent(contact));
@@ -280,11 +308,12 @@ public class CacheManager {
                     .insertContactInterface(contactDBID, interfaceDBID);
             if (res > 0)
                 EventBus.getDefault().post(new ContactInterfaceInserted(contact, event.neighbour, event.channel));
-        } catch(NetUtil.NoMacAddressException ignore) {
+        } catch (NetUtil.NoMacAddressException ignore) {
         }
     }
+
     public void onEventAsync(PushStatusSent event) {
-        if(event.status == null)
+        if (event.status == null)
             return;
 
         PushStatus status = new PushStatus(event.status);
@@ -294,52 +323,55 @@ public class CacheManager {
         DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).updateStatus(status);
 
         // then the Contact database
-        if(status.getdbId() > 0) {
-            for(Contact recipient : event.recipients) {
+        if (status.getdbId() > 0) {
+            for (Contact recipient : event.recipients) {
                 Contact contact = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContact(recipient.getUid());
                 long contactDBID;
-                if(contact == null) {
+                if (contact == null) {
                     recipient.setStatusSent(1);
                     contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).insertOrUpdateContact(recipient);
                 } else {
-                    contact.setStatusSent(contact.nbStatusSent()+1);
+                    contact.setStatusSent(contact.nbStatusSent() + 1);
                     contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).insertOrUpdateContact(contact);
                 }
                 DatabaseFactory.getStatusContactDatabase(RumbleApplication.getContext()).insertStatusContact(status.getdbId(), contactDBID);
             }
         }
     }
+
     public void onEventAsync(ChatMessageReceived event) {
-        if(event.chatMessage == null)
+        if (event.chatMessage == null)
             return;
 
         long existsDBID = DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).getChatMessageDBID(event.chatMessage.getUUID());
-        if(existsDBID > 0)
+        if (existsDBID > 0)
             return;
 
         // we insert/update the contact to the database
         Contact contact = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContact(event.chatMessage.getAuthor().getUid());
-        if(contact == null) {
+        if (contact == null) {
             contact = event.chatMessage.getAuthor();
             DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).insertOrUpdateContact(contact);
-        } else if(!contact.getName().equals(event.chatMessage.getAuthor().getName())) {
+        } else if (!contact.getName().equals(event.chatMessage.getAuthor().getName())) {
             // we do not accept message for which the author has changed since we last known of (UID/name)
-            Log.d(TAG, "[!] AuthorID: "+contact.getUid()+ " CONFLICT: db="+contact.getName()+" status="+event.chatMessage.getAuthor().getName());
+            Log.d(TAG, "[!] AuthorID: " + contact.getUid() + " CONFLICT: db=" + contact.getName() + " status=" + event.chatMessage.getAuthor().getName());
             return;
         }
         ChatMessage chatMessage = new ChatMessage(event.chatMessage);
-        if(DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).insertMessage(chatMessage) > 0);
-            EventBus.getDefault().post(new ChatMessageInsertedEvent(chatMessage, event.channel));
+        if (DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).insertMessage(chatMessage) > 0)
+            ;
+        EventBus.getDefault().post(new ChatMessageInsertedEvent(chatMessage, event.channel));
     }
+
     public void onEventAsync(ChatMessageSent event) {
-        if(event.chatMessage == null)
+        if (event.chatMessage == null)
             return;
 
         ChatMessage chatMessage = DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).getChatMessage(event.chatMessage.getUUID());
-        if(chatMessage == null)
+        if (chatMessage == null)
             return;
 
-        chatMessage.setNbRecipients(chatMessage.getNbRecipients()+1);
+        chatMessage.setNbRecipients(chatMessage.getNbRecipients() + 1);
         DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).updateMessage(chatMessage);
         EventBus.getDefault().post(new ChatMessageUpdatedEvent(chatMessage));
     }
@@ -348,12 +380,12 @@ public class CacheManager {
      * Managing User Interaction, onEventAsync to avoid slowing down UI
      */
     public void onEventAsync(UserSetHashTagInterest event) {
-        if(event.hashtag == null)
+        if (event.hashtag == null)
             return;
         Contact contact = Contact.getLocalContact();
         long contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(contact.getUid());
-        long tagDBID     = DatabaseFactory.getHashtagDatabase(RumbleApplication.getContext()).getHashtagDBID(event.hashtag);
-        if((event.levelOfInterest == 0) && contact.getHashtagInterests().containsKey(event.hashtag)) {
+        long tagDBID = DatabaseFactory.getHashtagDatabase(RumbleApplication.getContext()).getHashtagDBID(event.hashtag);
+        if ((event.levelOfInterest == 0) && contact.getHashtagInterests().containsKey(event.hashtag)) {
             contact.getHashtagInterests().remove(event.hashtag);
             DatabaseFactory.getContactHashTagInterestDatabase(RumbleApplication.getContext()).deleteContactTagInterest(contactDBID, tagDBID);
         } else {
@@ -363,35 +395,39 @@ public class CacheManager {
         EventBus.getDefault().post(new ContactTagInterestUpdatedEvent(contact));
 
     }
+
     public void onEventAsync(UserReadStatus event) {
-        if(event.status == null)
+        if (event.status == null)
             return;
         event.status.setUserRead(true);
         DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).updateStatus(event.status);
         //todo trow an event
     }
+
     public void onEventAsync(UserLikedStatus event) {
-        if(event.status == null)
+        if (event.status == null)
             return;
         event.status.setUserLike(true);
         DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).updateStatus(event.status);
         //todo trow an event
     }
+
     public void onEventAsync(UserSavedStatus event) {
-        if(event.status == null)
+        if (event.status == null)
             return;
         event.status.setUserSaved(true);
         DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).updateStatus(event.status);
         //todo trow an event
     }
+
     public void onEventAsync(UserDeleteStatus event) {
-        if(event.status == null)
+        if (event.status == null)
             return;
-        if(DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).deleteStatus(event.status.getUuid())) {
-            if(event.status.hasAttachedFile()) {
+        if (DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).deleteStatus(event.status.getUuid())) {
+            if (event.status.hasAttachedFile()) {
                 // if filename starts with a '/' it means that the file is from another album
                 // we do not delete the file in that case
-                if(!event.status.getFileName().startsWith("/")) {
+                if (!event.status.getFileName().startsWith("/")) {
                     try {
                         File attached = new File(FileUtil.getWritableAlbumStorageDir(), event.status.getFileName());
                         if (attached.exists() && attached.isFile()) {
@@ -404,11 +440,12 @@ public class CacheManager {
             EventBus.getDefault().post(new StatusDeletedEvent(event.status.getUuid(), event.status.getdbId()));
         }
     }
+
     public void onEventAsync(UserComposeStatus event) {
         try {
-            if(event.status == null)
+            if (event.status == null)
                 return;
-            if(!event.tempfile.equals("")) {
+            if (!event.tempfile.equals("")) {
                 String cleanedUuid = FileUtil.cleanBase64(event.status.getUuid());
                 String filename = "JPEG_" + cleanedUuid + ".jpg";
                 if (saveImageOnDisk(event.tempfile, filename))
@@ -418,9 +455,9 @@ public class CacheManager {
             DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).insertStatus(status);
 
             // we subscribe the user to every hashtag he used in his message
-            if(status.getHashtagSet().size() > 0) {
-                for(String hashtag : status.getHashtagSet()) {
-                    onEventAsync(new UserSetHashTagInterest(hashtag,255));
+            if (status.getHashtagSet().size() > 0) {
+                for (String hashtag : status.getHashtagSet()) {
+                    onEventAsync(new UserSetHashTagInterest(hashtag, 255));
                 }
             }
         } finally {
@@ -431,14 +468,15 @@ public class CacheManager {
                 } catch (IOException ignore) {
                 }
             }
-            if(event.status != null)
+            if (event.status != null)
                 event.status.discard();
         }
     }
+
     public void onEventAsync(UserCreateGroup event) {
-        if(event.group == null)
+        if (event.group == null)
             return;
-        if(DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group)) {
+        if (DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group)) {
             Contact local = Contact.getLocalContact();
             local.addGroup(event.group.getGid());
             long contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(local.getUid());
@@ -447,31 +485,36 @@ public class CacheManager {
             EventBus.getDefault().post(new ContactGroupListUpdated(local));
         }
     }
+
     public void onEventAsync(UserJoinGroup event) {
-        if(event.group == null)
+        if (event.group == null)
             return;
-        if(DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group)) {
+        if (DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group)) {
             Contact local = Contact.getLocalContact();
             local.addGroup(event.group.getGid());
             long contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(local.getUid());
             long groupDBID = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(event.group.getGid());
-            DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext()).insertContactGroup(contactDBID,groupDBID);
+            DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext()).insertContactGroup(contactDBID, groupDBID);
             EventBus.getDefault().post(new ContactGroupListUpdated(local));
         }
     }
+
     public void onEventAsync(UserDeleteGroup event) {
-        if(event.gid == null)
+        if (event.gid == null)
             return;
         DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).deleteGroupStatus(event.gid);
     }
+
     public void onEventAsync(UserLeaveGroup event) {
-        if(event.gid == null)
+        if (event.gid == null)
             return;
         DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).leaveGroup(event.gid);
     }
+
     public void onEventAsync(UserWipeStatuses event) {
         DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).wipe();
     }
+
     public void onEventAsync(UserComposeChatMessage event) {
         if (event.chatMessage == null)
             return;
@@ -479,29 +522,34 @@ public class CacheManager {
         if (DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).insertMessage(chatMessage) > 0)
             EventBus.getDefault().post(new ChatMessageInsertedEvent(chatMessage));
     }
+
     public void onEventAsync(UserReadChatMessage event) {
-        if(event.chatMessage == null)
+        if (event.chatMessage == null)
             return;
         event.chatMessage.setUserRead(true);
-        if(DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).updateMessage(event.chatMessage) > 0)
+        if (DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).updateMessage(event.chatMessage) > 0)
             EventBus.getDefault().post(new ChatMessageUpdatedEvent(event.chatMessage));
     }
+
     public void onEventAsync(UserWipeChatMessages event) {
         DatabaseFactory.getChatMessageDatabase(RumbleApplication.getContext()).wipe();
     }
+
     public void onEventAsync(UserWipeFiles event) {
         try {
             File dir = FileUtil.getReadableAlbumStorageDir();
-            if(dir != null) {
+            if (dir != null) {
                 File[] files = dir.listFiles();
-                if(files != null) {
+                if (files != null) {
                     for (int i = 0; i < files.length; i++) {
                         files[i].delete();
                     }
                 }
             }
-        }catch(IOException ie){}
+        } catch (IOException ie) {
+        }
     }
+
     public void onEventAsync(UserWipeData event) {
         this.onEventAsync(new UserWipeStatuses());
         this.onEventAsync(new UserWipeChatMessages());
@@ -513,8 +561,8 @@ public class CacheManager {
         File savedImage = null;
         try {
             toDelete = new File(FileUtil.getWritableAlbumStorageDir(), from);
-            savedImage   = new File(FileUtil.getWritableAlbumStorageDir(), to);
-            if(toDelete.exists() && toDelete.isFile() && (toDelete.length() > MAX_IMAGE_SIZE_ON_DISK)) {
+            savedImage = new File(FileUtil.getWritableAlbumStorageDir(), to);
+            if (toDelete.exists() && toDelete.isFile() && (toDelete.length() > MAX_IMAGE_SIZE_ON_DISK)) {
 
                 // first we extrat the width and height of the image
                 BitmapFactory.Options options = new BitmapFactory.Options();
@@ -524,7 +572,7 @@ public class CacheManager {
                 final int width = options.outWidth;
 
                 Bitmap scaled;
-                if((height > MAX_IMAGE_BORDER_PX) || (height > MAX_IMAGE_BORDER_PX)) {
+                if ((height > MAX_IMAGE_BORDER_PX) || (height > MAX_IMAGE_BORDER_PX)) {
                     // we compute the new required height and width given that
                     // we want the bigger border (Width or Height) to be 1000 px
                     float factor = Math.max(height, width) / (float) MAX_IMAGE_BORDER_PX;
@@ -557,7 +605,7 @@ public class CacheManager {
             } else {
                 // we rename the file
                 File fromFile = new File(FileUtil.getWritableAlbumStorageDir(), from);
-                if(!fromFile.renameTo(savedImage))
+                if (!fromFile.renameTo(savedImage))
                     throw new IOException("cannot rename the file");
             }
 
@@ -568,8 +616,8 @@ public class CacheManager {
             RumbleApplication.getContext().sendBroadcast(mediaScanIntent);
 
             return true;
-        } catch(IOException e) {
-            Log.d(TAG, "there was an error resizing the image: "+e.getMessage());
+        } catch (IOException e) {
+            Log.d(TAG, "there was an error resizing the image: " + e.getMessage());
         }
         return false;
     }

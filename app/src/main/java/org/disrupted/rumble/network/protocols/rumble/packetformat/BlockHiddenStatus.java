@@ -3,10 +3,12 @@ package org.disrupted.rumble.network.protocols.rumble.packetformat;
 import android.util.Base64;
 
 import org.disrupted.rumble.database.objects.HiddenStatus;
+import org.disrupted.rumble.database.objects.PushStatus;
 import org.disrupted.rumble.network.linklayer.exception.InputOutputStreamException;
 import org.disrupted.rumble.network.protocols.command.CommandSendHiddenStatus;
 import org.disrupted.rumble.network.protocols.rumble.packetformat.exceptions.MalformedBlockPayload;
 import org.disrupted.rumble.util.EncryptedOutputStream;
+import org.disrupted.rumble.util.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -66,7 +68,6 @@ public class BlockHiddenStatus extends Block {
             throw new MalformedBlockPayload("wrong payload size: " + header.getBlockLength(), 0);
     }
 
-
     @Override
     public long readBlock(InputStream in) throws MalformedBlockPayload, IOException, InputOutputStreamException {
         sanityCheck();
@@ -97,7 +98,9 @@ public class BlockHiddenStatus extends Block {
         readleft -= bytesread;
 
         status = new HiddenStatus(new String(gid), buffer);
+        status.setHeader(header);
 
+        Log.d(TAG, "HiddenStatus received (" + bytesread + " bytes)");
         return header.getBlockLength();
     }
 
@@ -118,6 +121,7 @@ public class BlockHiddenStatus extends Block {
         header.writeBlockHeader(out);
         out.write(blockBuffer.array(), 0, length);
 
+        Log.d(TAG, "HiddenStatus sent (" + length + " bytes)");
         return header.getBlockLength() + BlockHeader.BLOCK_HEADER_LENGTH;
     }
 

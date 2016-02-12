@@ -1,13 +1,17 @@
 package org.disrupted.rumble.database;
 
+import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.disrupted.rumble.database.events.StatusInsertedEvent;
 import org.disrupted.rumble.database.objects.HiddenStatus;
 
 import java.util.ArrayList;
+
+import de.greenrobot.event.EventBus;
 
 /**
  * Created by davide on 12/02/16.
@@ -57,7 +61,7 @@ public class HiddenStatusDatabase extends Database {
     private ArrayList<HiddenStatus> getStatuses() {
         SQLiteDatabase database = databaseHelper.getReadableDatabase();
         Cursor cursor = database.query(TABLE_NAME, null, null, null, null, null, null);
-        if(cursor == null)
+        if (cursor == null)
             return null;
         try {
             ArrayList<HiddenStatus> ret = new ArrayList<HiddenStatus>();
@@ -83,4 +87,24 @@ public class HiddenStatusDatabase extends Database {
         return new HiddenStatus(statusDBID, gid, status_bytes);
     }
 
+    public long insertStatus(HiddenStatus status) {
+        ContentValues contentValues = new ContentValues();
+
+        long group_DBID = DatabaseFactory.getGroupDatabase(context).getGroupDBID(status.getGid());
+
+        if (group_DBID < 0)
+            return -1;
+
+        contentValues.put(GROUP_ID, status.getGid());
+        contentValues.put(STATUS, status.getStatus());
+
+        long statusID = databaseHelper.getWritableDatabase().insertWithOnConflict(TABLE_NAME, null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
+
+        if (statusID >= 0) {
+            status.setDbid(statusID);
+            // TODO: send event?
+        }
+
+        return statusID;
+    }
 }
