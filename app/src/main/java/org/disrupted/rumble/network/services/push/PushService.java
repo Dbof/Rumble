@@ -54,15 +54,16 @@ public class PushService implements ServiceLayer {
 
     public static PushService getInstance(NetworkCoordinator networkCoordinator) {
         synchronized (lock) {
-            if(instance == null)
+            if (instance == null)
                 instance = new PushService(networkCoordinator);
 
             return instance;
         }
     }
+
     private PushService(NetworkCoordinator networkCoordinator) {
         this.networkCoordinator = networkCoordinator;
-        rdwatcher = new ReplicationDensityWatcher(1000*3600);
+        rdwatcher = new ReplicationDensityWatcher(1000 * 3600);
     }
 
     @Override
@@ -82,10 +83,10 @@ public class PushService implements ServiceLayer {
     public void stopService() {
         synchronized (lock) {
             Log.d(TAG, "[-] Stopping PushService");
-            if(EventBus.getDefault().isRegistered(this))
+            if (EventBus.getDefault().isRegistered(this))
                 EventBus.getDefault().unregister(this);
 
-            for(Map.Entry<Contact, MessageDispatcher> entry : contactToDispatcher.entrySet()) {
+            for (Map.Entry<Contact, MessageDispatcher> entry : contactToDispatcher.entrySet()) {
                 MessageDispatcher dispatcher = entry.getValue();
                 dispatcher.interrupt();
             }
@@ -101,11 +102,11 @@ public class PushService implements ServiceLayer {
      * to add a new channel of communication
      */
     public void onEvent(ChannelConnected event) {
-        if(!event.channel.getProtocolIdentifier().equals(RumbleProtocol.protocolID))
+        if (!event.channel.getProtocolIdentifier().equals(RumbleProtocol.protocolID))
             return;
 
         Contact local = Contact.getLocalContact();
-        CommandSendLocalInformation command = new CommandSendLocalInformation(local,Contact.FLAG_TAG_INTEREST | Contact.FLAG_GROUP_LIST);
+        CommandSendLocalInformation command = new CommandSendLocalInformation(local, Contact.FLAG_TAG_INTEREST | Contact.FLAG_GROUP_LIST);
         event.channel.executeNonBlocking(command);
     }
 
@@ -114,14 +115,14 @@ public class PushService implements ServiceLayer {
      * we start the dispatcher that will send him the PushStatus according to its preferences.
      */
     public void onEvent(ContactInformationReceived event) {
-        if(!event.channel.getProtocolIdentifier().equals(RumbleProtocol.protocolID))
+        if (!event.channel.getProtocolIdentifier().equals(RumbleProtocol.protocolID))
             return;
 
         synchronized (lock) {
             MessageDispatcher dispatcher = contactToDispatcher.get(event.contact);
             if (dispatcher != null) {
-                Log.d(TAG, "A dispatcher contact "+event.contact.getName()
-                        +" ("+event.contact.getUid()+") already exists");
+                Log.d(TAG, "A dispatcher contact " + event.contact.getName()
+                        + " (" + event.contact.getUid() + ") already exists");
                 return;
             }
             dispatcher = new MessageDispatcher(event.contact);
@@ -143,33 +144,35 @@ public class PushService implements ServiceLayer {
     }
 
     private static float computeScore(PushStatus message, Contact contact) {
+        /* don't consider groups for the score
         if(!contact.getJoinedGroupIDs().contains(message.getGroup().getGid()))
             return 0;
+         */
 
         float relevance;
-        int totalInterest  = 0;
-        int totalHashtag   = 0;
-        for(String hashtag : message.getHashtagSet()) {
+        int totalInterest = 0;
+        int totalHashtag = 0;
+        for (String hashtag : message.getHashtagSet()) {
             Integer value = contact.getHashtagInterests().get(hashtag);
-            if(value != null) {
+            if (value != null) {
                 totalInterest += value;
                 totalHashtag++;
             }
         }
-        if(totalHashtag > 0)
-            relevance = totalInterest/(totalHashtag*Contact.MAX_INTEREST_TAG_VALUE);
+        if (totalHashtag > 0)
+            relevance = totalInterest / (totalHashtag * Contact.MAX_INTEREST_TAG_VALUE);
         else
             relevance = 0;
         float replicationDensity = rdwatcher.computeMetric(message.getUuid());
-        float quality =  (message.getDuplicate() == 0) ? 0 : (float)message.getLike()/(float)message.getDuplicate();
-        float age = (message.getTTL() <= 0) ? 1 : (1- (System.currentTimeMillis() - message.getTimeOfCreation())/message.getTTL());
+        float quality = (message.getDuplicate() == 0) ? 0 : (float) message.getLike() / (float) message.getDuplicate();
+        float age = (message.getTTL() <= 0) ? 1 : (1 - (System.currentTimeMillis() - message.getTimeOfCreation()) / message.getTTL());
         boolean distance = true;
 
         float a = 0;
-        float b = (float)0.6;
-        float c = (float)0.4;
+        float b = (float) 0.6;
+        float c = (float) 0.4;
 
-        float score = (a*relevance + b*replicationDensity + c*quality)*age*(distance ? 1 : 0);
+        float score = (a * relevance + b * replicationDensity + c * quality) * age * (distance ? 1 : 0);
 
         return score;
     }
@@ -179,8 +182,8 @@ public class PushService implements ServiceLayer {
 
         private static final String TAG = "MessageDispatcher";
 
-        private Contact            contact;
-        private ProtocolChannel    tmpchannel;
+        private Contact contact;
+        private ProtocolChannel tmpchannel;
 
         private ArrayList<Integer> statuses;
         private float threshold;
@@ -197,10 +200,12 @@ public class PushService implements ServiceLayer {
             putLock.lock();
             takeLock.lock();
         }
+
         private void fullyUnlock() {
             putLock.unlock();
             takeLock.unlock();
         }
+
         private void signalNotEmpty() {
             final ReentrantLock takeLock = this.takeLock;
             takeLock.lock();
@@ -229,13 +234,13 @@ public class PushService implements ServiceLayer {
         public void stopDispatcher() {
             running = false;
             this.interrupt();
-            if(EventBus.getDefault().isRegistered(this))
+            if (EventBus.getDefault().isRegistered(this))
                 EventBus.getDefault().unregister(this);
             contactToDispatcher.remove(contact);
         }
 
         private void updateStatusList() {
-            if(contact == null)
+            if (contact == null)
                 return;
             PushStatusDatabase.StatusQueryOption options = new PushStatusDatabase.StatusQueryOption();
             options.filterFlags |= PushStatusDatabase.StatusQueryOption.FILTER_NOT_EXPIRED;
@@ -246,19 +251,20 @@ public class PushService implements ServiceLayer {
             options.query_result = PushStatusDatabase.StatusQueryOption.QUERY_RESULT.LIST_OF_DBIDS;
             DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).getStatuses(options, onStatusLoaded);
         }
+
         DatabaseExecutor.ReadableQueryCallback onStatusLoaded = new DatabaseExecutor.ReadableQueryCallback() {
             @Override
             public void onReadableQueryFinished(Object result) {
                 if (result != null) {
                     try {
                         takeLock.lock();
-                        Log.d(TAG, "[+] update status list: "+result.toString());
+                        Log.d(TAG, "[+] update status list: " + result.toString());
                         statuses.clear();
-                        final ArrayList<Integer> answer = (ArrayList<Integer>)result;
+                        final ArrayList<Integer> answer = (ArrayList<Integer>) result;
                         for (Integer s : answer) {
                             PushStatus message = DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext())
                                     .getStatus(s);
-                            if(message != null)
+                            if (message != null)
                                 add(message);
                         }
                         // the "max" has been automatically updated while we were adding items
@@ -274,29 +280,29 @@ public class PushService implements ServiceLayer {
             try {
                 Log.d(TAG, "[+] MessageDispatcher initiated");
                 do {
-                        // pick a message randomly
-                        PushStatus message = pickMessage();
+                    // pick a message randomly
+                    PushStatus message = pickMessage();
 
-                        // prepare the command
-                        Command cmd = new CommandSendPushStatus(message);
+                    // prepare the command
+                    Command cmd = new CommandSendPushStatus(message);
 
-                        // choose a channel to execute the command
-                        ProtocolChannel channel = PushService.networkCoordinator.neighbourManager.chooseBestChannel(contact);
-                        this.tmpchannel = channel;
-                        if(this.tmpchannel == null) {
-                            // the contact must have disconnected completely
-                            stopDispatcher();
-                            break;
-                        }
+                    // choose a channel to execute the command
+                    ProtocolChannel channel = PushService.networkCoordinator.neighbourManager.chooseBestChannel(contact);
+                    this.tmpchannel = channel;
+                    if (this.tmpchannel == null) {
+                        // the contact must have disconnected completely
+                        stopDispatcher();
+                        break;
+                    }
 
-                        // send the message (blocking operation)
-                        if(channel.execute(cmd)) {
-                            if(max.equals(message))
-                                max = null;
-                            statuses.remove(Integer.valueOf((int) message.getdbId()));
-                        }
+                    // send the message (blocking operation)
+                    if (channel.execute(cmd)) {
+                        if (max.equals(message))
+                            max = null;
+                        statuses.remove(Integer.valueOf((int) message.getdbId()));
+                    }
 
-                        message.discard();
+                    message.discard();
                 } while (running);
 
             } catch (InterruptedException ie) {
@@ -309,7 +315,7 @@ public class PushService implements ServiceLayer {
         private void clear() {
             fullyLock();
             try {
-                if(EventBus.getDefault().isRegistered(this))
+                if (EventBus.getDefault().isRegistered(this))
                     EventBus.getDefault().unregister(this);
                 statuses.clear();
             } finally {
@@ -317,8 +323,8 @@ public class PushService implements ServiceLayer {
             }
         }
 
-        private boolean add(PushStatus message){
-            if(this.contact == null)
+        private boolean add(PushStatus message) {
+            if (this.contact == null)
                 return false;
             final ReentrantLock putlock = this.putLock;
             putlock.lock();
@@ -331,7 +337,7 @@ public class PushService implements ServiceLayer {
                     return false;
                 }
 
-                statuses.add((int)message.getdbId());
+                statuses.add((int) message.getdbId());
 
                 /* we update the max value */
                 if (max == null) {
@@ -359,36 +365,36 @@ public class PushService implements ServiceLayer {
             /*
              * we only update the max if it has been sent (max == null) or it is no longer valid
              */
-            if(max != null) {
+            if (max != null) {
                 maxScore = computeScore(max, contact);
-                if(maxScore > threshold)
+                if (maxScore > threshold)
                     return;
                 max.discard();
                 max = null;
             }
 
             ArrayList<Integer> toDelete = new ArrayList<Integer>();
-            for(Integer id : statuses) {
+            for (Integer id : statuses) {
                 PushStatus message = DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext())
                         .getStatus(id);
                 float score = computeScore(message, contact);
 
                 // we delete the message if it is no longer valid (for instance it expired)
-                if(score <= threshold) {
+                if (score <= threshold) {
                     message.discard();
-                    toDelete.add((int)message.getdbId());
+                    toDelete.add((int) message.getdbId());
                     continue;
                 }
 
                 // item becomes the new max if max was null
-                if(max == null) {
+                if (max == null) {
                     max = message;
                     maxScore = score;
                     continue;
                 }
 
                 // if we have better score than the max, we replace it
-                if(score > maxScore) {
+                if (score > maxScore) {
                     max.discard();
                     max = message;
                     maxScore = score;
@@ -397,7 +403,7 @@ public class PushService implements ServiceLayer {
                     message.discard();
                 }
             }
-            for(Integer i : toDelete) {
+            for (Integer i : toDelete) {
                 statuses.remove(Integer.valueOf(i));
             }
         }
@@ -427,8 +433,8 @@ public class PushService implements ServiceLayer {
                         int index = random.nextInt(statuses.size());
                         long id = statuses.get(index);
                         pickedUpMessage = DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).getStatus(id);
-                        if(pickedUpMessage == null) {
-                            statuses.remove(Integer.valueOf((int)id));
+                        if (pickedUpMessage == null) {
+                            statuses.remove(Integer.valueOf((int) id));
                             continue;
                         }
 
@@ -437,7 +443,7 @@ public class PushService implements ServiceLayer {
                         float score = computeScore(pickedUpMessage, contact);
 
                         if (score <= threshold) {
-                            statuses.remove(Integer.valueOf((int)id));
+                            statuses.remove(Integer.valueOf((int) id));
                             pickedUpMessage.discard();
                             pickedUpMessage = null;
                             continue;
@@ -452,7 +458,7 @@ public class PushService implements ServiceLayer {
                     } finally {
                         putlock.unlock();
                     }
-                } while(!pickup);
+                } while (!pickup);
             } finally {
                 takelock.unlock();
             }
@@ -461,11 +467,11 @@ public class PushService implements ServiceLayer {
 
         public void sendLocalPreferences(int flags) {
             Contact local = Contact.getLocalContact();
-            CommandSendLocalInformation command = new CommandSendLocalInformation(local,flags);
+            CommandSendLocalInformation command = new CommandSendLocalInformation(local, flags);
 
             ProtocolChannel channel = PushService.networkCoordinator.neighbourManager.chooseBestChannel(contact);
             this.tmpchannel = channel;
-            if(this.tmpchannel == null) {
+            if (this.tmpchannel == null) {
                 // the contact must have disconnected
                 stopDispatcher();
                 return;
@@ -487,9 +493,10 @@ public class PushService implements ServiceLayer {
                 fullyUnlock();
             }
         }
+
         public void onEvent(StatusInsertedEvent event) {
-            if(!event.status.getAuthor().equals(this.contact) &&
-               !event.status.receivedBy().equals(this.contact.getUid())) {
+            if (!event.status.getAuthor().equals(this.contact) &&
+                    !event.status.receivedBy().equals(this.contact.getUid())) {
                 PushStatus message = new PushStatus(event.status);
                 add(message);
                 message.discard();
@@ -503,23 +510,24 @@ public class PushService implements ServiceLayer {
          * we wait for the related DatabaseEvent (if any) for updating the status list
          */
         public void onEvent(ContactGroupListUpdated event) {
-            if(this.contact == null)
+            if (this.contact == null)
                 return;
-            if(event.contact.equals(this.contact)) {
+            if (event.contact.equals(this.contact)) {
                 this.contact.setJoinedGroupIDs(event.contact.getJoinedGroupIDs());
                 updateStatusList();
             }
-            if(event.contact.isLocal()) {
+            if (event.contact.isLocal()) {
                 sendLocalPreferences(Contact.FLAG_GROUP_LIST);
             }
         }
+
         public void onEvent(ContactTagInterestUpdatedEvent event) {
-            if(this.contact == null)
+            if (this.contact == null)
                 return;
-            if(event.contact.equals(this.contact)) {
+            if (event.contact.equals(this.contact)) {
                 this.contact.setHashtagInterests(event.contact.getHashtagInterests());
             }
-            if(event.contact.isLocal()) {
+            if (event.contact.isLocal()) {
                 sendLocalPreferences(Contact.FLAG_TAG_INTEREST);
             }
         }

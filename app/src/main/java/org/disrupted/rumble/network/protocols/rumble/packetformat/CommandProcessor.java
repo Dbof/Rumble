@@ -17,6 +17,7 @@
 
 package org.disrupted.rumble.network.protocols.rumble.packetformat;
 
+import org.disrupted.rumble.database.objects.HiddenStatus;
 import org.disrupted.rumble.database.objects.PushStatus;
 import org.disrupted.rumble.network.linklayer.UnicastConnection;
 import org.disrupted.rumble.network.linklayer.bluetooth.BluetoothLinkLayerAdapter;
@@ -24,6 +25,7 @@ import org.disrupted.rumble.network.linklayer.exception.InputOutputStreamExcepti
 import org.disrupted.rumble.network.protocols.ProtocolChannel;
 import org.disrupted.rumble.network.protocols.command.Command;
 import org.disrupted.rumble.network.protocols.command.CommandSendChatMessage;
+import org.disrupted.rumble.network.protocols.command.CommandSendHiddenStatus;
 import org.disrupted.rumble.network.protocols.command.CommandSendKeepAlive;
 import org.disrupted.rumble.network.protocols.command.CommandSendLocalInformation;
 import org.disrupted.rumble.network.protocols.command.CommandSendPushStatus;
@@ -60,7 +62,7 @@ public class CommandProcessor {
         this.channel = channel;
     }
 
-    public boolean processCommand(Command command) throws InputOutputStreamException, IOException{
+    public boolean processCommand(Command command) throws InputOutputStreamException, IOException {
         int bytes_transmitted = 0;
         long timeToTransfer = System.nanoTime();
 
@@ -88,6 +90,32 @@ public class CommandProcessor {
                 BlockKeepAlive blockKA = new BlockKeepAlive((CommandSendKeepAlive) command);
                 blockKA.writeBlock(out, null);
                 break;
+            case SEND_HIDDEN_STATUS:
+                CommandSendHiddenStatus commandSendHiddenStatus = (CommandSendHiddenStatus) command;
+                HiddenStatus hstatus = commandSendHiddenStatus.getStatus();
+
+                BlockHiddenStatus blockHiddenStatus = new BlockHiddenStatus(commandSendHiddenStatus);
+                blockHiddenStatus.header.setLastBlock(true);
+                blockHiddenStatus.header.setEncrypted(false);
+
+                // send block
+                bytes_transmitted += blockHiddenStatus.writeBlock(out, null);
+                blockHiddenStatus.dismiss();
+
+                channel.status_sent++;
+                channel.out_transmission_time += (System.nanoTime() - timeToTransfer);
+                //TODO: send event
+                /*
+                EventBus.getDefault().post(new PushStatusSent(
+                                status,
+                                channel.getRecipientList(),
+                                RumbleProtocol.protocolID,
+                                BluetoothLinkLayerAdapter.LinkLayerIdentifier)
+                );
+                */
+
+
+                break;
             case SEND_PUSH_STATUS:
                 CommandSendPushStatus commandSendPushStatus = (CommandSendPushStatus) command;
                 PushStatus status = commandSendPushStatus.getStatus();
@@ -95,9 +123,9 @@ public class CommandProcessor {
                 /* prepare the blockstatus and blockfile for attached file, if any */
                 BlockPushStatus blockPushStatus = new BlockPushStatus(commandSendPushStatus);
                 BlockFile blockFile = null;
-                if(status.hasAttachedFile()) {
+                if (status.hasAttachedFile()) {
                     File attachedFile = new File(FileUtil.getReadableAlbumStorageDir(), status.getFileName());
-                    if(!(attachedFile.exists() && attachedFile.isFile())) {
+                    if (!(attachedFile.exists() && attachedFile.isFile())) {
                         BlockDebug.e(TAG, "attached file doesn't exist, abort sending push status");
                         return false;
                     }
@@ -106,7 +134,7 @@ public class CommandProcessor {
 
                 /* if the group is private, send a BlockCipher AES128/CBC/PKCS5 first */
                 EncryptedOutputStream eos = null;
-                if(status.getGroup().isPrivate()) {
+                if (status.getGroup().isPrivate()) {
                     try {
                         byte[] iv = CryptoUtil.generateRandomIV(16);
                         eos = CryptoUtil.getCipherOutputStream(out,
@@ -119,7 +147,7 @@ public class CommandProcessor {
                         blockCipher.header.setLastBlock(false);
                         bytes_transmitted += blockCipher.writeBlock(out, eos);
                         blockCipher.dismiss();
-                    } catch(CryptoUtil.CryptographicException e) {
+                    } catch (CryptoUtil.CryptographicException e) {
                         BlockDebug.e(TAG, "cannot send PushStatus, failed to setup encrypted stream", e);
                         return false;
                     }
@@ -128,26 +156,26 @@ public class CommandProcessor {
                 /* send block status */
                 blockPushStatus.header.setLastBlock(!status.hasAttachedFile() && (eos == null));
                 blockPushStatus.header.setEncrypted(eos != null);
-                bytes_transmitted+=blockPushStatus.writeBlock(out, eos);
-                if(eos != null)
+                bytes_transmitted += blockPushStatus.writeBlock(out, eos);
+                if (eos != null)
                     eos.flush();
                 blockPushStatus.dismiss();
 
                 /* send block file if any */
-                if(blockFile != null) {
+                if (blockFile != null) {
                     blockFile.header.setLastBlock(eos == null);
                     blockFile.header.setEncrypted(eos != null);
                     bytes_transmitted += blockFile.writeBlock(out, eos);
-                    if(eos != null)
+                    if (eos != null)
                         eos.flush();
                     blockFile.dismiss();
                 }
 
                 /* send a cleartext block */
-                if(eos != null) {
+                if (eos != null) {
                     BlockCipher cleartext = new BlockCipher();
                     cleartext.header.setLastBlock(true);
-                    bytes_transmitted+=cleartext.writeBlock(out, eos);
+                    bytes_transmitted += cleartext.writeBlock(out, eos);
                     cleartext.dismiss();
                     eos.close();
                 }

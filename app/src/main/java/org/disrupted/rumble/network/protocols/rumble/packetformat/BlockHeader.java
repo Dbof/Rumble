@@ -89,6 +89,7 @@ public class BlockHeader {
 
     public static final int BLOCKTYPE_KEEPALIVE     = 0x00;
     public static final int BLOCKTYPE_PUSH_STATUS   = 0x01;
+    public static final int BLOCKTYPE_HIDDEN_STATUS = 0x11;
     public static final int BLOCKTYPE_FILE          = 0x02;
     public static final int BLOCKTYPE_CONTACT       = 0x03;
     public static final int BLOCKTYPE_CHAT_MESSAGE  = 0x04;
