@@ -18,6 +18,7 @@
 package org.disrupted.rumble.network.protocols.rumble.packetformat;
 
 import org.disrupted.rumble.database.objects.HiddenStatus;
+import org.disrupted.rumble.network.protocols.events.HiddenStatusReceived;
 import org.disrupted.rumble.util.Log;
 
 import org.disrupted.rumble.app.RumbleApplication;
@@ -91,8 +92,11 @@ public class BlockProcessor {
                     channel.bytes_received += hiddenStatus.readBlock(is);
                     channel.in_transmission_time += (System.nanoTime() - timeToTransfer);
                     channel.status_received++;
-                    //TODO: send event
-                    Log.d(TAG, hiddenStatus.status.toString());
+                    EventBus.getDefault().post(new HiddenStatusReceived(
+                                    hiddenStatus.status,
+                                    RumbleProtocol.protocolID,
+                                    channel.getLinkLayerIdentifier())
+                    );
                     break;
 
                 case BlockHeader.BLOCKTYPE_PUSH_STATUS:

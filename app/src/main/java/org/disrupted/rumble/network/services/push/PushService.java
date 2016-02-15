@@ -1,5 +1,7 @@
 package org.disrupted.rumble.network.services.push;
 
+import org.disrupted.rumble.database.objects.HiddenStatus;
+import org.disrupted.rumble.network.protocols.command.CommandSendHiddenStatus;
 import org.disrupted.rumble.util.Log;
 
 import org.disrupted.rumble.app.RumbleApplication;
@@ -144,10 +146,7 @@ public class PushService implements ServiceLayer {
     }
 
     private static float computeScore(PushStatus message, Contact contact) {
-        /* don't consider groups for the score
-        if(!contact.getJoinedGroupIDs().contains(message.getGroup().getGid()))
-            return 0;
-         */
+        // don't consider groups for the score
 
         float relevance;
         int totalInterest = 0;
@@ -283,8 +282,16 @@ public class PushService implements ServiceLayer {
                     // pick a message randomly
                     PushStatus message = pickMessage();
 
-                    // prepare the command
-                    Command cmd = new CommandSendPushStatus(message);
+                    Command cmd;
+                    if(!contact.getJoinedGroupIDs().contains(message.getGroup().getGid())) {
+                        // contact is not part of the group, so send hidden status
+                        cmd = new CommandSendHiddenStatus(HiddenStatus.convertFromPushStatus(message));
+                        Log.d(TAG, "[!] Sending HiddenStatus instead of PushStatus");
+                    } else {
+                        // prepare the command
+                        cmd = new CommandSendPushStatus(message);
+                    }
+
 
                     // choose a channel to execute the command
                     ProtocolChannel channel = PushService.networkCoordinator.neighbourManager.chooseBestChannel(contact);

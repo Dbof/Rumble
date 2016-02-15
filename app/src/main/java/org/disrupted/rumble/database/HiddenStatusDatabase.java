@@ -102,7 +102,7 @@ public class HiddenStatusDatabase extends Database {
 
         if (statusID >= 0) {
             status.setDbid(statusID);
-            // TODO: send event?
+            //send event? Not necessary, since user can not read hidden statuses anyway
         }
 
         return statusID;

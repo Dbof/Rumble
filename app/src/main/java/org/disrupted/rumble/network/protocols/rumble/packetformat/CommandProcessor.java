@@ -31,6 +31,7 @@ import org.disrupted.rumble.network.protocols.command.CommandSendLocalInformatio
 import org.disrupted.rumble.network.protocols.command.CommandSendPushStatus;
 import org.disrupted.rumble.network.protocols.events.ChatMessageSent;
 import org.disrupted.rumble.network.protocols.events.ContactInformationSent;
+import org.disrupted.rumble.network.protocols.events.HiddenStatusSent;
 import org.disrupted.rumble.network.protocols.events.PushStatusReceived;
 import org.disrupted.rumble.network.protocols.events.PushStatusSent;
 import org.disrupted.rumble.network.protocols.rumble.RumbleProtocol;
@@ -104,15 +105,12 @@ public class CommandProcessor {
 
                 channel.status_sent++;
                 channel.out_transmission_time += (System.nanoTime() - timeToTransfer);
-                //TODO: send event
-                /*
-                EventBus.getDefault().post(new PushStatusSent(
-                                status,
+                EventBus.getDefault().post(new HiddenStatusSent(
+                                hstatus,
                                 channel.getRecipientList(),
                                 RumbleProtocol.protocolID,
                                 BluetoothLinkLayerAdapter.LinkLayerIdentifier)
                 );
-                */
 
 
                 break;

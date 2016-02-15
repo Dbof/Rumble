@@ -1,15 +1,18 @@
 package org.disrupted.rumble.database.objects;
 
+import org.disrupted.rumble.network.protocols.command.CommandSendPushStatus;
 import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockHeader;
 import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockHiddenStatus;
 import org.disrupted.rumble.network.protocols.rumble.packetformat.BlockPushStatus;
 import org.disrupted.rumble.util.Log;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 /**
- * Created by davide on 12/02/16.
+ * @author davide
  */
 public class HiddenStatus {
     private static final String TAG = "StatusMessage";
@@ -74,16 +77,21 @@ public class HiddenStatus {
         return b.toString();
     }
 
-    public PushStatus convertToPushStatus(Group group) {
-        if (group == null)
-            return null;
-
+    public PushStatus convertToPushStatus() {
         BlockPushStatus bps = new BlockPushStatus(header);
         ByteArrayInputStream is = new ByteArrayInputStream(status_bytes);
         // TODO: this does not support encrypted statuses, where IV and key is required
+
+
         PushStatus res = null;
         try {
+            // first read block header
+            BlockHeader header_unused = BlockHeader.readBlockHeader(is);
+
+            // then read block
             bps.readBlock(is);
+
+            // save status
             res = bps.status;
             Log.d(TAG, "HiddenStatus was converted successfully!");
         } catch (Exception e) {
@@ -91,8 +99,32 @@ public class HiddenStatus {
         } finally {
             try {
                 is.close();
-            } catch (IOException ignore) {}
+            } catch (IOException ignore) {
+            }
         }
+        return res;
+    }
+
+    public static HiddenStatus convertFromPushStatus(PushStatus status) {
+        HiddenStatus res = null;
+
+        BlockPushStatus bps = new BlockPushStatus(new CommandSendPushStatus(status));
+        ByteArrayOutputStream os = new ByteArrayOutputStream(STATUS_MAX_SIZE);
+
+        try {
+            // the following writes the header and the block
+            bps.writeBlock(os, null);
+            res = new HiddenStatus(status.getGroup().getGid(), os.toByteArray());
+            Log.d(TAG, "PushStatus was converted successfully!");
+        } catch (Exception e) {
+            Log.e(TAG, "convertFromPushStatus failed: " + e.getMessage());
+        } finally {
+            try {
+                os.close();
+            } catch (IOException ignore) {
+            }
+        }
+
         return res;
     }
 

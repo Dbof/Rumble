@@ -227,6 +227,15 @@ public class BlockPushStatus extends Block{
         }
     }
 
+    /**
+     * Write Block to the given OutputStreams.
+     * Caution: always writes the block header first.
+     * @param out
+     * @param eos
+     * @return number of bytes written
+     * @throws IOException
+     * @throws InputOutputStreamException
+     */
     @Override
     public long writeBlock(OutputStream out, EncryptedOutputStream eos) throws IOException,InputOutputStreamException {
         /* preparing some buffer and calculate the block size */
@@ -260,10 +269,11 @@ public class BlockPushStatus extends Block{
         blockBuffer.putShort((short) status.getReplication());
         blockBuffer.put((byte) status.getLike());
 
-
-        /* send the status and the block file */
+        /* send block header */
         header.setPayloadLength(length);
         header.writeBlockHeader(out);
+
+        /* send the status and the block file */
         if(header.isEncrypted() && (eos != null)) {
             eos.write(blockBuffer.array(), 0, length);
         } else {

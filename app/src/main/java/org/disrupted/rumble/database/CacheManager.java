@@ -131,9 +131,16 @@ public class CacheManager {
             // Group existed before, so try to decode status
             hiddenGroup = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext())
                     .getGroup(event.status.getGid());
-            PushStatus ps = event.status.convertToPushStatus(hiddenGroup);
+            PushStatus ps = event.status.convertToPushStatus();
             if (ps != null) {
-                ;//TODO: send event PushStatusReceived
+                EventBus.getDefault().post(new PushStatusReceived(
+                                ps,
+                                ps.getGroup().getGid(),
+                                "",
+                                "",
+                                event.protocolID,
+                                event.linkLayerIdentifier)
+                );
             } else return;
         } else {
             // Group was created, so add hidden status to database
