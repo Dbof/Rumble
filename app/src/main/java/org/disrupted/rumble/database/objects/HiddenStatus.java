@@ -32,6 +32,7 @@ public class HiddenStatus {
     public HiddenStatus(long db_id, String gid, byte[] status_bytes) {
         this.dbid = db_id;
         this.gid = gid;
+        this.status_bytes = status_bytes;
     }
 
     public long getDbid() {
@@ -78,7 +79,6 @@ public class HiddenStatus {
     }
 
     public PushStatus convertToPushStatus() {
-        BlockPushStatus bps = new BlockPushStatus(header);
         ByteArrayInputStream is = new ByteArrayInputStream(status_bytes);
         // TODO: this does not support encrypted statuses, where IV and key is required
 
@@ -87,12 +87,15 @@ public class HiddenStatus {
         try {
             // first read block header
             BlockHeader header_unused = BlockHeader.readBlockHeader(is);
+            BlockPushStatus bps = new BlockPushStatus(header_unused);
 
             // then read block
-            bps.readBlock(is);
+             bps.readBlock(is);
 
             // save status
+            bps.status.setGroup(new Group(bps.group_id_base64, bps.group_id_base64, null));
             res = bps.status;
+
             Log.d(TAG, "HiddenStatus was converted successfully!");
         } catch (Exception e) {
             Log.e(TAG, "convertToPushStatus failed: " + e.getMessage());
@@ -109,11 +112,14 @@ public class HiddenStatus {
         HiddenStatus res = null;
 
         BlockPushStatus bps = new BlockPushStatus(new CommandSendPushStatus(status));
-        ByteArrayOutputStream os = new ByteArrayOutputStream(STATUS_MAX_SIZE);
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
 
         try {
             // the following writes the header and the block
             bps.writeBlock(os, null);
+            os.flush();
+
+            Log.d(TAG, "Size of created status: " + os.toByteArray().length + " bytes");
             res = new HiddenStatus(status.getGroup().getGid(), os.toByteArray());
             Log.d(TAG, "PushStatus was converted successfully!");
         } catch (Exception e) {

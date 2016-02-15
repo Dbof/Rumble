@@ -109,4 +109,23 @@ public class ContactGroupDatabase extends Database {
             cursor.close();
         }
     }
+
+    public boolean isMemberInGroup(String contactUID, Group group) {
+
+        long contactID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(contactUID);
+        long groupID = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(group.getGid());
+
+        Cursor cursor = null;
+        try {
+            SQLiteDatabase database = databaseHelper.getReadableDatabase();
+            cursor = database.query(TABLE_NAME, null, UDBID + " = ? AND " + GDBID + " = ?",
+                    new String[]{Long.toString(contactID), Long.toString(groupID)}, null, null, null);
+            if (cursor == null)
+                return false;
+
+            return cursor.getCount() > 0;
+        } finally {
+            cursor.close();
+        }
+    }
 }

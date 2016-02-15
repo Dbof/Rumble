@@ -127,12 +127,18 @@ public class CacheManager {
 
         // create a group and add it to the database
         Group hiddenGroup = new Group(event.status.getGid(), event.status.getGid(), null);
-        if (!DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(hiddenGroup)) {
-            // Group existed before, so try to decode status
-            hiddenGroup = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext())
+
+        // check membership
+        if (DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext())
+                .isMemberInGroup(Contact.getLocalContact().getUid(), hiddenGroup)) {
+
+            // User is member of the group
+            Group knownGroup = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext())
                     .getGroup(event.status.getGid());
             PushStatus ps = event.status.convertToPushStatus();
+
             if (ps != null) {
+                ps.setGroup(knownGroup);
                 EventBus.getDefault().post(new PushStatusReceived(
                                 ps,
                                 ps.getGroup().getGid(),
@@ -141,18 +147,20 @@ public class CacheManager {
                                 event.protocolID,
                                 event.linkLayerIdentifier)
                 );
-            } else return;
+            }
         } else {
-            // Group was created, so add hidden status to database
+            // This group is hidden!
+            DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(hiddenGroup);
+            // Group was created (or already existed), so add hidden status to database
             DatabaseFactory.getHiddenStatusDatabase(RumbleApplication.getContext()).insertStatus(event.status);
             Log.d(TAG, "Inserted hidden status into database (dbid " + event.status.getDbid() + ")");
         }
-
     }
 
     /*
      * Managing Network Interaction, onEventAsync to avoid slowing down network
      */
+
     public void onEventAsync(PushStatusReceived event) {
         try {
             if (event.status == null)

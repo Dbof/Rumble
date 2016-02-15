@@ -501,6 +501,8 @@ public class PushService implements ServiceLayer {
             }
         }
 
+        // TODO: Add event for hidden statuses
+
         public void onEvent(StatusInsertedEvent event) {
             if (!event.status.getAuthor().equals(this.contact) &&
                     !event.status.receivedBy().equals(this.contact.getUid())) {

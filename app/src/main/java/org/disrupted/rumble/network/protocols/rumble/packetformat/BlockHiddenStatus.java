@@ -89,7 +89,7 @@ public class BlockHiddenStatus extends Block {
         readleft -= FIELD_GROUP_ID_SIZE;
 
         // read blob
-        byte[] buffer = new byte[HiddenStatus.STATUS_MAX_SIZE];
+        byte[] buffer = new byte[(int) readleft];
 
         // read all into the buffer
         int bytesread = in.read(buffer, 0, (int) readleft);
@@ -97,7 +97,12 @@ public class BlockHiddenStatus extends Block {
             throw new IOException("End of stream reached before reading was complete");
         readleft -= bytesread;
 
-        status = new HiddenStatus(new String(gid), buffer);
+        gid = Base64.encode(gid, Base64.NO_WRAP);
+
+        ByteBuffer bb = ByteBuffer.wrap(buffer, 0, bytesread);
+        Log.d(TAG, "bytesread = " + bytesread + " - buffer size: " + bb.array().length + " bytes");
+
+        status = new HiddenStatus(new String(gid), bb.array());
         status.setHeader(header);
 
         Log.d(TAG, "HiddenStatus received (" + bytesread + " bytes)");
@@ -109,7 +114,9 @@ public class BlockHiddenStatus extends Block {
         /* preparing some buffer and calculate the block size */
         byte[] group_id = Base64.decode(status.getGid(), Base64.NO_WRAP);
         byte[] hs = status.getStatus();
+
         int length = MIN_PAYLOAD_SIZE + hs.length;
+        Log.d(TAG, "Size of status: " + length + " bytes");
 
         /* prepare the block buffer */
         ByteBuffer blockBuffer = ByteBuffer.allocate(length);
