@@ -80,17 +80,17 @@ public class HiddenStatus {
 
     public PushStatus convertToPushStatus() {
         ByteArrayInputStream is = new ByteArrayInputStream(status_bytes);
-        // TODO: this does not support encrypted statuses, where IV and key is required
-
 
         PushStatus res = null;
         try {
             // first read block header
             BlockHeader header_unused = BlockHeader.readBlockHeader(is);
+            if (header_unused.isEncrypted())
+                return null; // TODO: does not support encrypted statuses, where IV and key is required
             BlockPushStatus bps = new BlockPushStatus(header_unused);
 
             // then read block
-             bps.readBlock(is);
+            bps.readBlock(is);
 
             // save status
             bps.status.setGroup(new Group(bps.group_id_base64, bps.group_id_base64, null));
@@ -109,6 +109,17 @@ public class HiddenStatus {
     }
 
     public static HiddenStatus convertFromPushStatus(PushStatus status) {
+        if (status.getGroup().isPrivate()) {
+            // TODO
+            // encrypted groups are not supported,
+            // because both the key and the IV byte value is needed to decrypt messages.
+            // If IVs are sent to every user on a route, security only really depends on key,
+            // which makes the encryption too vulnerable.
+            Log.e(TAG, "[!] Private groups are not supported yet. " +
+                    "Cannot send private message as hidden status.");
+            return null;
+        }
+
         HiddenStatus res = null;
 
         BlockPushStatus bps = new BlockPushStatus(new CommandSendPushStatus(status));

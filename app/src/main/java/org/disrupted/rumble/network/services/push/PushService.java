@@ -148,7 +148,12 @@ public class PushService implements ServiceLayer {
     }
 
     private static float computeScore(PushStatus message, Contact contact) {
-        // don't consider groups for the score
+        // if group is private and contact is not part of it
+        // TODO: change this when encrypted messages are sent to non-members of the group
+        if (message.getGroup().isPrivate() &&
+                ! contact.getJoinedGroupIDs().contains(message.getGroup().getGid())) {
+            return 0; // don't send message to this contact
+        }
 
         float relevance;
         int totalInterest = 0;
@@ -328,7 +333,15 @@ public class PushService implements ServiceLayer {
                         Command cmd;
                         if (!contact.getJoinedGroupIDs().contains(message.getGroup().getGid())) {
                             // contact is not part of the group, so send hidden status
-                            cmd = new CommandSendHiddenStatus(HiddenStatus.convertFromPushStatus(message));
+                            if (message.getGroup().isPrivate()) {
+                                message.discard();
+                                continue; //
+                            }
+                            HiddenStatus hs = HiddenStatus.convertFromPushStatus(message);
+                            if (hs == null)
+                                continue; // abort
+
+                            cmd = new CommandSendHiddenStatus(hs);
                             Log.d(TAG, "[!] Sending HiddenStatus instead of PushStatus");
                         } else {
                             // prepare the command

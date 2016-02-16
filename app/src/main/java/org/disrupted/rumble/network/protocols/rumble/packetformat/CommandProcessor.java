@@ -96,7 +96,11 @@ public class CommandProcessor {
                 HiddenStatus hstatus = commandSendHiddenStatus.getStatus();
 
                 BlockHiddenStatus blockHiddenStatus = new BlockHiddenStatus(commandSendHiddenStatus);
+
+                // TODO: change when files are supported
                 blockHiddenStatus.header.setLastBlock(true);
+
+                // TODO: change when encrypted/private group's hidden statuses are supported
                 blockHiddenStatus.header.setEncrypted(false);
 
                 // send block
