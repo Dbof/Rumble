@@ -131,7 +131,7 @@ public class PopupComposeStatus extends Activity {
     }
 
     public void getGroupList() {
-        DatabaseFactory.getGroupDatabase(this).getGroups(onGroupsLoaded);
+        DatabaseFactory.getContactJoinGroupDatabase(this).getGroups(Contact.getLocalContact().getUid(), onGroupsLoaded);
     }
     private DatabaseExecutor.ReadableQueryCallback onGroupsLoaded = new DatabaseExecutor.ReadableQueryCallback() {
         @Override

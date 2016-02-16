@@ -171,7 +171,7 @@ public class CacheManager {
             Group group = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroup(event.gid);
             if (group == null) {
                 // we do not belong to the group
-                Log.d(TAG, "[!] unknow group: refusing the message");
+                Log.d(TAG, "[!] unknown group: refusing the message");
                 return;
             }
             event.status.setGroup(group);
@@ -491,14 +491,19 @@ public class CacheManager {
     public void onEventAsync(UserCreateGroup event) {
         if (event.group == null)
             return;
-        if (DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group)) {
-            Contact local = Contact.getLocalContact();
-            local.addGroup(event.group.getGid());
-            long contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(local.getUid());
-            long groupDBID = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(event.group.getGid());
-            DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext()).insertContactGroup(contactDBID, groupDBID);
-            EventBus.getDefault().post(new ContactGroupListUpdated(local));
-        }
+        DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).insertGroup(event.group);
+        long groupDBID = DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).getGroupDBID(event.group.getGid());
+        if (groupDBID < 0)
+            return;
+
+        // Group exists, so add local contact
+        Contact local = Contact.getLocalContact();
+        long contactDBID = DatabaseFactory.getContactDatabase(RumbleApplication.getContext()).getContactDBID(local.getUid());
+        DatabaseFactory.getContactJoinGroupDatabase(RumbleApplication.getContext()).insertContactGroup(contactDBID, groupDBID);
+
+        local.addGroup(event.group.getGid());
+        EventBus.getDefault().post(new ContactGroupListUpdated(local));
+
     }
 
     public void onEventAsync(UserJoinGroup event) {
@@ -524,6 +529,9 @@ public class CacheManager {
         if (event.gid == null)
             return;
         DatabaseFactory.getGroupDatabase(RumbleApplication.getContext()).leaveGroup(event.gid);
+        Contact local = Contact.getLocalContact();
+        local.removeGroup(event.gid);
+        EventBus.getDefault().post(new ContactGroupListUpdated(local));
     }
 
     public void onEventAsync(UserWipeStatuses event) {

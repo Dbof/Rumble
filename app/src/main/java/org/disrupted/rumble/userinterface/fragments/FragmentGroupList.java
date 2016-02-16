@@ -39,6 +39,7 @@ import org.disrupted.rumble.database.PushStatusDatabase;
 import org.disrupted.rumble.database.events.GroupDeletedEvent;
 import org.disrupted.rumble.database.events.GroupInsertedEvent;
 import org.disrupted.rumble.database.events.StatusInsertedEvent;
+import org.disrupted.rumble.database.objects.Contact;
 import org.disrupted.rumble.database.objects.Group;
 import org.disrupted.rumble.network.protocols.events.PushStatusReceived;
 import org.disrupted.rumble.userinterface.adapter.GroupRecyclerAdapter;
@@ -92,7 +93,7 @@ public class FragmentGroupList extends Fragment {
     }
 
     public void getGroupList() {
-        DatabaseFactory.getGroupDatabase(getActivity()).getGroups(onGroupsLoaded);
+        DatabaseFactory.getContactJoinGroupDatabase(getActivity()).getGroups(Contact.getLocalContact().getUid(), onGroupsLoaded);
     }
 
     private DatabaseExecutor.ReadableQueryCallback onGroupsLoaded = new DatabaseExecutor.ReadableQueryCallback() {
