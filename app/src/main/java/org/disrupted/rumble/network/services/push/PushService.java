@@ -1,5 +1,7 @@
 package org.disrupted.rumble.network.services.push;
 
+import org.disrupted.rumble.database.events.HiddenStatusDeletedEvent;
+import org.disrupted.rumble.database.events.HiddenStatusInsertedEvent;
 import org.disrupted.rumble.database.objects.HiddenStatus;
 import org.disrupted.rumble.network.protocols.command.CommandSendHiddenStatus;
 import org.disrupted.rumble.util.Log;
@@ -184,6 +186,7 @@ public class PushService implements ServiceLayer {
         private Contact contact;
         private ProtocolChannel tmpchannel;
 
+        private ArrayList<Integer> hidden_statuses;
         private ArrayList<Integer> statuses;
         private float threshold;
 
@@ -221,6 +224,7 @@ public class PushService implements ServiceLayer {
             this.max = null;
             this.threshold = 0;
             statuses = new ArrayList<Integer>();
+            hidden_statuses = new ArrayList<Integer>();
             contactToDispatcher.put(contact, this);
         }
 
@@ -279,20 +283,6 @@ public class PushService implements ServiceLayer {
             try {
                 Log.d(TAG, "[+] MessageDispatcher initiated");
                 do {
-                    // pick a message randomly
-                    PushStatus message = pickMessage();
-
-                    Command cmd;
-                    if(!contact.getJoinedGroupIDs().contains(message.getGroup().getGid())) {
-                        // contact is not part of the group, so send hidden status
-                        cmd = new CommandSendHiddenStatus(HiddenStatus.convertFromPushStatus(message));
-                        Log.d(TAG, "[!] Sending HiddenStatus instead of PushStatus");
-                    } else {
-                        // prepare the command
-                        cmd = new CommandSendPushStatus(message);
-                    }
-
-
                     // choose a channel to execute the command
                     ProtocolChannel channel = PushService.networkCoordinator.neighbourManager.chooseBestChannel(contact);
                     this.tmpchannel = channel;
@@ -302,14 +292,40 @@ public class PushService implements ServiceLayer {
                         break;
                     }
 
-                    // send the message (blocking operation)
-                    if (channel.execute(cmd)) {
-                        if (max.equals(message))
-                            max = null;
-                        statuses.remove(Integer.valueOf((int) message.getdbId()));
+                    // pick a message randomly
+                    PushStatus message = pickMessage();
+
+                    if (message != null) {
+                        Command cmd;
+                        if (!contact.getJoinedGroupIDs().contains(message.getGroup().getGid())) {
+                            // contact is not part of the group, so send hidden status
+                            cmd = new CommandSendHiddenStatus(HiddenStatus.convertFromPushStatus(message));
+                            Log.d(TAG, "[!] Sending HiddenStatus instead of PushStatus");
+                        } else {
+                            // prepare the command
+                            cmd = new CommandSendPushStatus(message);
+                        }
+                        // send the message (blocking operation)
+                        if (channel.execute(cmd)) {
+                            if (max.equals(message))
+                                max = null;
+                            statuses.remove(Integer.valueOf((int) message.getdbId()));
+                        }
+                        message.discard();
                     }
 
-                    message.discard();
+
+                    // forward a hidden message, if available
+                    HiddenStatus hmsg = pickHidden();
+                    if (hmsg != null) {
+                        Command cmdHidden = new CommandSendHiddenStatus(hmsg);
+                        Log.d(TAG, "Forwarding HiddenStatus...");
+
+                        // send the message (blocking operation)
+                        if (channel.execute(cmdHidden)) {
+                            hidden_statuses.remove(Integer.valueOf((int) hmsg.getDbid()));
+                        }
+                    }
                 } while (running);
 
             } catch (InterruptedException ie) {
@@ -325,8 +341,24 @@ public class PushService implements ServiceLayer {
                 if (EventBus.getDefault().isRegistered(this))
                     EventBus.getDefault().unregister(this);
                 statuses.clear();
+                hidden_statuses.clear();
             } finally {
                 fullyUnlock();
+            }
+        }
+
+        private boolean addHidden(HiddenStatus message) {
+            if (this.contact == null)
+                return false;
+
+            final ReentrantLock putlock = this.putLock;
+            putlock.lock();
+            try {
+                hidden_statuses.add((int) message.getDbid());
+                signalNotEmpty();
+                return true;
+            } finally {
+                putlock.unlock();
             }
         }
 
@@ -415,6 +447,44 @@ public class PushService implements ServiceLayer {
             }
         }
 
+        private HiddenStatus pickHidden() throws InterruptedException {
+            if (hidden_statuses.size() == 0)
+                return null; // don't wait for statuses
+
+            final ReentrantLock takelock = this.takeLock;
+            final ReentrantLock putlock = this.takeLock;
+
+            boolean pickup = false;
+            HiddenStatus pickedUpMessage;
+            takelock.lockInterruptibly();
+
+            try {
+                do {
+
+                    putlock.lock();
+                    try {
+                        // randomly pickup an element
+                        int index = random.nextInt(hidden_statuses.size());
+                        long id = hidden_statuses.get(index);
+                        pickedUpMessage = DatabaseFactory.getHiddenStatusDatabase(RumbleApplication.getContext()).getStatus(id);
+                        if (pickedUpMessage == null) {
+                            hidden_statuses.remove(Integer.valueOf((int) id));
+                            continue;
+                        }
+                        pickup = true;
+
+                    } finally {
+                        putlock.unlock();
+                    }
+                } while (!pickup);
+
+            } finally {
+                takelock.unlock();
+            }
+
+            return pickedUpMessage;
+        }
+
         /*
          *  See the paper:
          *  "Roulette-wheel selection via stochastic acceptance"
@@ -429,8 +499,10 @@ public class PushService implements ServiceLayer {
             takelock.lockInterruptibly();
             try {
                 do {
-                    while (statuses.size() == 0)
+                    while (statuses.size() == 0 && hidden_statuses.size() == 0)
                         notEmpty.await();
+                    if (statuses.size() == 0)
+                        return null; // this is handled in run, so stop here
 
                     putlock.lock();
                     try {
@@ -501,8 +573,6 @@ public class PushService implements ServiceLayer {
             }
         }
 
-        // TODO: Add event for hidden statuses
-
         public void onEvent(StatusInsertedEvent event) {
             if (!event.status.getAuthor().equals(this.contact) &&
                     !event.status.receivedBy().equals(this.contact.getUid())) {
@@ -511,6 +581,25 @@ public class PushService implements ServiceLayer {
                 message.discard();
             }
         }
+
+        /*
+         * Keeping the list of hidden statuses to push up-to-date
+         */
+        public void onEvent(HiddenStatusDeletedEvent event) {
+            fullyLock();
+            try {
+                hidden_statuses.remove(Integer.valueOf((int) event.dbid));
+            } finally {
+                fullyUnlock();
+            }
+        }
+
+        public void onEvent(HiddenStatusInsertedEvent event) {
+            //TODO: filter out if received_by == this.contact
+            HiddenStatus message = event.status;
+            addHidden(message);
+        }
+
 
         /*
          * we don't send any status until we received an Interest Vector

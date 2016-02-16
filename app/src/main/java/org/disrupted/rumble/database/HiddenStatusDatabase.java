@@ -6,8 +6,11 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.disrupted.rumble.database.events.HiddenStatusInsertedEvent;
 import org.disrupted.rumble.database.events.StatusInsertedEvent;
 import org.disrupted.rumble.database.objects.HiddenStatus;
+import org.disrupted.rumble.network.protocols.events.HiddenStatusReceived;
+import org.disrupted.rumble.util.Log;
 
 import java.util.ArrayList;
 
@@ -102,9 +105,18 @@ public class HiddenStatusDatabase extends Database {
 
         if (statusID >= 0) {
             status.setDbid(statusID);
-            //send event? Not necessary, since user can not read hidden statuses anyway
+            EventBus.getDefault().post(new HiddenStatusInsertedEvent(status));
         }
 
         return statusID;
+    }
+
+    /*
+    * Delete a status per ID or UUID
+    */
+    public boolean deleteStatus(long id) {
+        SQLiteDatabase wd = databaseHelper.getWritableDatabase();
+        int rows = wd.delete(TABLE_NAME, ID_WHERE, new String[]{Long.toString(id)});
+        return rows > 0;
     }
 }
