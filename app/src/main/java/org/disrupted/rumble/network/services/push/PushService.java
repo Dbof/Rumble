@@ -255,6 +255,35 @@ public class PushService implements ServiceLayer {
             DatabaseFactory.getPushStatusDatabase(RumbleApplication.getContext()).getStatuses(options, onStatusLoaded);
         }
 
+        private void updateHiddenList() {
+            if (contact == null)
+                return;
+
+            DatabaseFactory.getHiddenStatusDatabase(RumbleApplication.getContext())
+                    .getStatuses(onHiddenLoaded);
+        }
+
+
+        DatabaseExecutor.ReadableQueryCallback onHiddenLoaded = new DatabaseExecutor.ReadableQueryCallback() {
+            @Override
+            public void onReadableQueryFinished(Object result) {
+                if (result != null) {
+                    try {
+                        takeLock.lock();
+                        Log.d(TAG, "[+] update status list: " + result.toString());
+                        statuses.clear();
+                        final ArrayList<HiddenStatus> answer = (ArrayList<HiddenStatus>) result;
+                        for (HiddenStatus s : answer) {
+                            if (s != null)
+                                addHidden(s);
+                        }
+                    } finally {
+                        takeLock.unlock();
+                    }
+                }
+            }
+        };
+
         DatabaseExecutor.ReadableQueryCallback onStatusLoaded = new DatabaseExecutor.ReadableQueryCallback() {
             @Override
             public void onReadableQueryFinished(Object result) {
@@ -613,6 +642,7 @@ public class PushService implements ServiceLayer {
             if (event.contact.equals(this.contact)) {
                 this.contact.setJoinedGroupIDs(event.contact.getJoinedGroupIDs());
                 updateStatusList();
+                updateHiddenList();
             }
             if (event.contact.isLocal()) {
                 sendLocalPreferences(Contact.FLAG_GROUP_LIST);

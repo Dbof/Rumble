@@ -61,7 +61,20 @@ public class HiddenStatusDatabase extends Database {
         }
     }
 
-    private ArrayList<HiddenStatus> getStatuses() {
+    /*
+     * General querying with options
+     */
+    public boolean getStatuses(DatabaseExecutor.ReadableQueryCallback callback) {
+        return DatabaseFactory.getDatabaseExecutor(context).addQuery(
+                new DatabaseExecutor.ReadableQuery() {
+                    @Override
+                    public Object read() {
+                        return getStatuses();
+                    }
+                }, callback);
+    }
+
+    private Object getStatuses() {
         SQLiteDatabase database = databaseHelper.getReadableDatabase();
         Cursor cursor = database.query(TABLE_NAME, null, null, null, null, null, null);
         if (cursor == null)
